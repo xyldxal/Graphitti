@@ -1,144 +1,118 @@
-# Graph Theory MP - README
+# Graph Theory MP
 
-# =============================
+------------------------------------------------------------
 
-# 
+This document summarizes the modifications made to the project files to support directed edges, weighted edges, and hover-based interaction.
 
-# This document summarizes the modifications made to the project files
+------------------------------------------------------------
 
-# to support directed edges, weighted edges, and hover-based interaction.
+## 1\. Edge.java
 
-# 
+------------------------------------------------------------
 
-# ------------------------------------------------------------
+\- Added new fields:
 
-# 1\. Edge.java
+&nbsp; - public int weight;        // stores edge weight
 
-# ------------------------------------------------------------
+&nbsp; - public boolean wasHovered; // flag for hover highlighting
 
-# \- Added new fields:
+\- Constructors updated:
 
-# &nbsp; - public int weight;        // stores edge weight
+&nbsp; - Edge(Vertex v1, Vertex v2) → defaults to undirected, weight = 1
 
-# &nbsp; - public boolean wasHovered; // flag for hover highlighting
+&nbsp; - Edge(Vertex v1, Vertex v2, boolean directed) → defaults to weight = 1
 
-# 
+&nbsp; - Edge(Vertex v1, Vertex v2, boolean directed, int weight) → main constructor
 
-# \- Constructors updated:
+\- draw(Graphics g) changes:
 
-# &nbsp; - Edge(Vertex v1, Vertex v2) → defaults to undirected, weight = 1
+&nbsp; - Trimmed both start and end points so lines do not pierce nodes.
 
-# &nbsp; - Edge(Vertex v1, Vertex v2, boolean directed) → defaults to weight = 1
+&nbsp; - Arrowhead tip placed just outside target node.
 
-# &nbsp; - Edge(Vertex v1, Vertex v2, boolean directed, int weight) → main constructor
+&nbsp; - Midpoint calculated for weight label placement.
 
-# 
+&nbsp; - If directed, labels offset perpendicular to edge to avoid overlap
 
-# \- draw(Graphics g) changes:
+&nbsp;   in bidirectional edges.
 
-# &nbsp; - Trimmed both start and end points so lines do not pierce nodes.
+&nbsp; - Weight label color changes to RED when hovered (wasHovered = true). 
 
-# &nbsp; - Arrowhead tip placed just outside target node.
+\- drawArrowHead(Graphics g) unchanged except for integration with trimmed line. 
 
-# &nbsp; - Midpoint calculated for weight label placement.
+\- hasIntersection(int x, int y) rewritten:
 
-# &nbsp; - If directed, labels offset perpendicular to edge to avoid overlap
+&nbsp; - Now checks proximity to edge midpoint instead of slope-based line detection.
 
-# &nbsp;   in bidirectional edges.
+&nbsp; - Uses tolerance (20px) around midpoint for easier clicking/hovering.
 
-# &nbsp; - Weight label color changes to RED when hovered (wasHovered = true).
+------------------------------------------------------------
 
-# 
+## 2\. Canvas.java
 
-# \- drawArrowHead(Graphics g) unchanged except for integration with trimmed line.
+------------------------------------------------------------
 
-# 
+\- Added new toggle flag:
 
-# \- hasIntersection(int x, int y) rewritten:
+&nbsp; - private boolean isWeightedMode = false;
 
-# &nbsp; - Now checks proximity to edge midpoint instead of slope-based line detection.
 
-# &nbsp; - Uses tolerance (20px) around midpoint for easier clicking/hovering.
 
-# 
+\- Added menu item or shortcut to toggle Weighted Mode:
 
-# ------------------------------------------------------------
+&nbsp; - "Toggle Weighted Mode" flips isWeightedMode and updates GUI.
 
-# 2\. Canvas.java
+\- In mouseReleased(MouseEvent e):
 
-# ------------------------------------------------------------
+&nbsp; - After edge creation (case 2), if isWeightedMode is true:
 
-# \- Added new toggle flag:
+&nbsp;   - Loop through edgeList.
 
-# &nbsp; - private boolean isWeightedMode = false;
+&nbsp;   - If mouse click is near edge midpoint (hasIntersection):
 
-# 
+&nbsp;     - Prompt user with JOptionPane for weight input.
 
-# \- Added menu item or shortcut to toggle Weighted Mode:
+&nbsp;     - Parse integer and assign to edge.weight.
 
-# &nbsp; - "Toggle Weighted Mode" flips isWeightedMode and updates GUI.
+&nbsp;     - Call refresh() to redraw canvas. 
 
-# 
+\- Added MouseMotionListener:
 
-# \- In mouseReleased(MouseEvent e):
+&nbsp; - On mouseMoved, checks each edge with hasIntersection.
 
-# &nbsp; - After edge creation (case 2), if isWeightedMode is true:
+&nbsp; - Sets edge.wasHovered = true if mouse near midpoint, else false.
 
-# &nbsp;   - Loop through edgeList.
+&nbsp; - Calls refresh() to update hover highlighting. 
 
-# &nbsp;   - If mouse click is near edge midpoint (hasIntersection):
+------------------------------------------------------------
 
-# &nbsp;     - Prompt user with JOptionPane for weight input.
+## 3\. GUI Feedback
 
-# &nbsp;     - Parse integer and assign to edge.weight.
+------------------------------------------------------------
 
-# &nbsp;     - Call refresh() to redraw canvas.
+\- Weighted Mode status displayed in GUI (similar to Directed Mode).
 
-# 
+\- Hovering over edge midpoint highlights weight label in RED.
 
-# \- Added MouseMotionListener:
+\- Clicking in Weighted Mode opens input dialog to change weight.
 
-# &nbsp; - On mouseMoved, checks each edge with hasIntersection.
+\- Bidirectional edges show weights on opposite sides of the line.
 
-# &nbsp; - Sets edge.wasHovered = true if mouse near midpoint, else false.
+------------------------------------------------------------
 
-# &nbsp; - Calls refresh() to update hover highlighting.
+## 4\. Conceptual Notes
 
-# 
+------------------------------------------------------------
 
-# ------------------------------------------------------------
+\- Each directed edge object stores its own weight, so bidirectional
 
-# 3\. GUI Feedback
+&nbsp; edges can have different values (e.g., A→B = 5, B→A = 2).
 
-# ------------------------------------------------------------
+\- Midpoint-based detection makes editing weights intuitive and
 
-# \- Weighted Mode status displayed in GUI (similar to Directed Mode).
+&nbsp; user-friendly compared to slope-based line detection. 
 
-# \- Hovering over edge midpoint highlights weight label in RED.
+------------------------------------------------------------
 
-# \- Clicking in Weighted Mode opens input dialog to change weight.
-
-# \- Bidirectional edges show weights on opposite sides of the line.
-
-# 
-
-# ------------------------------------------------------------
-
-# 4\. Conceptual Notes
-
-# ------------------------------------------------------------
-
-# \- Each directed edge object stores its own weight, so bidirectional
-
-# &nbsp; edges can have different values (e.g., A→B = 5, B→A = 2).
-
-# \- Midpoint-based detection makes editing weights intuitive and
-
-# &nbsp; user-friendly compared to slope-based line detection.
-
-# 
-
-# ------------------------------------------------------------
-
-# End of README
+### End of README
 
