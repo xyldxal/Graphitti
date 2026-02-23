@@ -4,8 +4,12 @@
  */
 package graphtheory;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
 
 /**
  *
@@ -17,9 +21,11 @@ public class Edge {
     public Vertex vertex2;
     public boolean wasFocused;
     public boolean wasClicked;
-    public boolean directed; // for directed graphs
-    public int weight; //default weight for edges
-    public boolean wasHovered; // new flag for hover higlight in weights
+    public boolean directed;      // for directed graphs
+    public int weight;            // default weight for edges
+    public boolean wasHovered;    // hover highlight for weight labels
+    public Color lineColor   = Color.BLACK; // edge line color
+    public float strokeWidth = 2.0f;        // line thickness in pixels
 
     public Edge(Vertex v1, Vertex v2) {
         this(v1, v2, false, 1); // default undirected, weight = 1
@@ -38,12 +44,17 @@ public class Edge {
     }
 
     public void draw(Graphics g) {
+        Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        Stroke origStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
         if (wasClicked) {
-            g.setColor(Color.red);
+            g2.setColor(Color.RED);
         } else if (wasFocused) {
-            g.setColor(Color.blue);
+            g2.setColor(Color.BLUE);
         } else {
-            g.setColor(Color.black);
+            g2.setColor(lineColor);
         }
 
         int x1 = vertex1.location.x;
@@ -55,52 +66,45 @@ public class Edge {
         double dy = y2 - y1;
         double theta = Math.atan2(dy, dx);
 
-        /* Shorten line so it doesn't pierce the node */
-        int nodeRadius = 20; // taken from Vertex.java
-        int buffer = 5; //smallgap so arrowhead doesn't touch node
-        
-        // Trim start point
-        int startX = (int)(x1 + (nodeRadius + buffer) * Math.cos(theta));
-        int startY = (int)(y1 + (nodeRadius + buffer) * Math.sin(theta));
+        // Trim endpoints so the line doesn't pierce node circles
+        int nodeRadius = vertex1.nodeSize / 2;
+        int buffer = 5;
 
+        int startX    = (int)(x1 + (nodeRadius + buffer) * Math.cos(theta));
+        int startY    = (int)(y1 + (nodeRadius + buffer) * Math.sin(theta));
+        int arrowTipX = (int)(x2 - (nodeRadius + buffer) * Math.cos(theta));
+        int arrowTipY = (int)(y2 - (nodeRadius + buffer) * Math.sin(theta));
 
-        // Arrowhead tip sits just outside the node
-        int arrowTipX  = (int)(x2 - (nodeRadius + buffer) * Math.cos(theta));
-        int arrowTipY  = (int)(y2 - (nodeRadius + buffer) * Math.sin(theta));
-
-        // Midpoint of the edge for label placement
+        // Weight label position (midpoint, offset perpendicularly for directed edges)
         int midX = (startX + arrowTipX) / 2;
         int midY = (startY + arrowTipY) / 2;
-
-        // If bidirectional, offset labels so they don't overlap
         if (directed) {
-            // Shift weight label perpendicular to the edge direction
             double perpTheta = theta + Math.PI / 2;
-            int offset = 10; // distance to offset the label
-            midX += (int)(offset * Math.cos(perpTheta));
-            midY += (int)(offset * Math.sin(perpTheta));
+            midX += (int)(10 * Math.cos(perpTheta));
+            midY += (int)(10 * Math.sin(perpTheta));
         }
 
-        //Draw weight as text
-        g.setColor(Color.BLACK);
-
-        int lineTrim = 10; // trim distance so line doesn't poke the node
+        int lineTrim = 10;
         int lineEndX = (int)(arrowTipX - lineTrim * Math.cos(theta));
         int lineEndY = (int)(arrowTipY - lineTrim * Math.sin(theta));
 
-        g.drawLine(startX, startY, lineEndX, lineEndY);
+        g2.drawLine(startX, startY, lineEndX, lineEndY);
 
         if (directed) {
-            drawArrowHead(g, lineEndX, lineEndY, arrowTipX, arrowTipY);
+            drawArrowHead(g2, lineEndX, lineEndY, arrowTipX, arrowTipY);
         }
 
+        // Weight label
         if (wasHovered) {
-            g.setColor(Color.RED);
+            g2.setColor(Color.RED);
         } else {
-            g.setColor(Color.BLACK);
+            g2.setColor(Color.BLACK);
         }
-        g.drawString(String.valueOf(weight), midX, midY);
-    }       
+        g2.drawString(String.valueOf(weight), midX, midY);
+
+        // Restore original stroke
+        g2.setStroke(origStroke);
+    }
 
     private void drawArrowHead(Graphics g, int x1, int y1, int xTip, int yTip) {
     double phi = Math.toRadians(40); // arrow angle
@@ -117,8 +121,7 @@ public class Edge {
         g.drawLine(xTip, yTip, x, y);
         rho = theta - phi;
     }
-    /* Debugger */
-    System.out.println("Arrow from ("+x1+","+y1+") to ("+xTip+","+yTip+")");
+
 }
 
     // Changed entirely for hover weights

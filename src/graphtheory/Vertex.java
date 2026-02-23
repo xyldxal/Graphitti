@@ -19,8 +19,9 @@ public class Vertex implements Comparable {
     public Point location;
     public boolean wasFocused;
     public boolean wasClicked;
-    private int size1 = 30;
-    private int size2 = 40;
+    public int nodeSize = 40;               // outer diameter
+    public Color outerColor = Color.BLACK;  // ring / border color
+    public Color innerColor = Color.WHITE;  // inner fill color
     public Vector<Vertex> connectedVertices;
 
     public Vertex(String name, int x, int y) {
@@ -35,12 +36,7 @@ public class Vertex implements Comparable {
 
     public boolean hasIntersection(int x, int y) {
         double distance = Math.sqrt(Math.pow((x - location.x), 2) + Math.pow((y - location.y), 2));
-
-        if (distance > size2 / 2) {
-            return false;
-        } else {
-            return true;
-        }
+        return distance <= nodeSize / 2.0;
     }
 
     public boolean connectedToVertex(Vertex v) {
@@ -65,18 +61,24 @@ public class Vertex implements Comparable {
     }
 
     public void draw(Graphics g) {
+        // Outer ring: red = clicked, blue = hovered, else custom color
         if (wasClicked) {
-            g.setColor(Color.red);
+            g.setColor(Color.RED);
         } else if (wasFocused) {
-            g.setColor(Color.blue);
+            g.setColor(Color.BLUE);
         } else {
-            g.setColor(Color.black);
+            g.setColor(outerColor);
         }
+        g.fillOval(location.x - nodeSize / 2, location.y - nodeSize / 2, nodeSize, nodeSize);
 
-        g.fillOval(location.x - size2 / 2, location.y - size2 / 2, size2, size2);
-        g.setColor(Color.WHITE);
-        g.fillOval(location.x - size1 / 2, location.y - size1 / 2, size1, size1);
+        // Inner fill — proportionally 75% of outer
+        int innerSize = (int)(nodeSize * 0.75);
+        g.setColor(innerColor);
+        g.fillOval(location.x - innerSize / 2, location.y - innerSize / 2, innerSize, innerSize);
+
+        // Label centered on node
         g.setColor(Color.BLACK);
-        g.drawString(name, location.x, location.y);
+        int strW = g.getFontMetrics().stringWidth(name);
+        g.drawString(name, location.x - strW / 2, location.y + 4);
     }
 }
