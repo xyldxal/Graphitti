@@ -28,11 +28,11 @@ public class Canvas {
     private CanvasPane canvas;
     private Graphics2D graphic;
     private Color backgroundColour;
-    private Image canvasImage,  canvasImage2;
+    private Image canvasImage, canvasImage2;
     private int selectedTool;
     private int selectedWindow;
     private Dimension screenSize;
-    public int width,  height;
+    public int width, height;
     private int clickedVertexIndex;
     private int clickedEdgeIndex;
     private FileManager fileManager = new FileManager();
@@ -40,6 +40,8 @@ public class Canvas {
     private boolean isDirectedMode = false;
     /* Weighted Edges */
     private boolean isWeightedMode = false;
+    /* Undo/Redo */
+    private ActionHistory history = new ActionHistory();
 
     // Toolbar tool buttons (kept as fields for active-highlight management)
     private JButton btnAddVertex;
@@ -54,7 +56,7 @@ public class Canvas {
     private JButton btnViewProps;
 
     // Colour constants for toolbar button states
-    private static final Color TOOL_ACTIVE_BG   = new Color(180, 210, 255);
+    private static final Color TOOL_ACTIVE_BG = new Color(180, 210, 255);
     private static final Color TOOL_INACTIVE_BG = UIManager.getColor("Button.background") != null
             ? UIManager.getColor("Button.background") : new Color(238, 238, 238);
 
@@ -63,24 +65,24 @@ public class Canvas {
     private GraphProperties gP = new GraphProperties();
 
     // ── Style defaults (applied to every newly created vertex / edge) ──────────
-    private Color defaultNodeOuter  = Color.BLACK;
-    private Color defaultNodeInner  = Color.WHITE;
-    private int   defaultNodeSize   = 40;
-    private Color defaultEdgeColor  = Color.BLACK;
+    private Color defaultNodeOuter = Color.BLACK;
+    private Color defaultNodeInner = Color.WHITE;
+    private int defaultNodeSize = 40;
+    private Color defaultEdgeColor = Color.BLACK;
     private float defaultEdgeStroke = 2.0f;
 
     // ── Selection tracking ────────────────────────────────────────────────────
     private Vertex selectedVertex = null;
-    private Edge   selectedEdge   = null;
+    private Edge selectedEdge = null;
 
     // Dynamic controls in the "Selected" card panel (updated by refreshSelectionPanel)
-    private JPanel  selectionCards;
-    private JLabel  selectionTitle;
+    private JPanel selectionCards;
+    private JLabel selectionTitle;
     private JButton selVertexOuterBtn, selVertexInnerBtn;
-    private JLabel  selVertexSizeLabel;
+    private JLabel selVertexSizeLabel;
     private JSlider selVertexSizeSlider;
     private JButton selEdgeColorBtn;
-    private JLabel  selEdgeStrokeLabel;
+    private JLabel selEdgeStrokeLabel;
     private JSlider selEdgeStrokeSlider;
 
     public Canvas(String title, int width, int height, Color bgColour) {
@@ -91,7 +93,7 @@ public class Canvas {
 
         // ── Menu bar ──────────────────────────────────────────────────────────
         menuBar = new JMenuBar();
-        JMenu menuOptions  = new JMenu("Tools");
+        JMenu menuOptions = new JMenu("Tools");
         JMenu menuOptions1 = new JMenu("File");
         JMenu menuOptions2 = new JMenu("Extras");
         JMenu menuOptions3 = new JMenu("Window");
@@ -241,6 +243,23 @@ public class Canvas {
 
         toolBar.addSeparator();
 
+        // Undo/Redo group
+        JButton btnUndo = makeToolButton("Undo", "undo.png", "Undo last action");
+        btnUndo.addActionListener(e -> {
+            history.undo();
+            erase();
+            refresh();
+        });
+        toolBar.add(btnUndo);
+
+        JButton btnRedo = makeToolButton("Redo", "redo.png", "Redo last undone action");
+        btnRedo.addActionListener(e -> {
+            history.redo();
+            erase();
+            refresh();
+        });
+        toolBar.add(btnRedo);
+
         // View group
         btnViewGraph = makeToolButton("Graph", "graph.png", "Switch to Graph view");
         btnViewGraph.addActionListener(new MenuListener());
@@ -273,11 +292,10 @@ public class Canvas {
         setVisible(true);
 
         vertexList = new Vector<Vertex>();
-        edgeList   = new Vector<Edge>();
+        edgeList = new Vector<Edge>();
     }
 
     // ── Toolbar helper factories ───────────────────────────────────────────────
-
     /**
      * Creates a plain JButton for the toolbar. It tries to load an icon from
      * the icons/ resource folder. If the icon file is missing the button falls
@@ -299,8 +317,8 @@ public class Canvas {
     }
 
     /**
-     * Same as makeToolButton but returns a JToggleButton (stays pressed
-     * when active — used for Directed / Weighted mode toggles).
+     * Same as makeToolButton but returns a JToggleButton (stays pressed when
+     * active — used for Directed / Weighted mode toggles).
      */
     private JToggleButton makeToggleButton(String text, String iconFile, String tooltip) {
         JToggleButton btn = new JToggleButton();
@@ -322,18 +340,20 @@ public class Canvas {
      */
     private ImageIcon loadIcon(String filename) {
         URL url = getClass().getResource("icons/" + filename);
-        if (url == null) return null;
+        if (url == null) {
+            return null;
+        }
         return new ImageIcon(url);
     }
 
     /**
-     * Sets the active tool and updates button highlight to show which tool
-     * is currently selected.
+     * Sets the active tool and updates button highlight to show which tool is
+     * currently selected.
      */
     private void setActiveTool(int tool) {
         selectedTool = tool;
-        JButton[] toolBtns = { btnAddVertex, btnAddEdge, btnGrab, btnRemove };
-        int[]     toolIds  = { 1, 2, 3, 4 };
+        JButton[] toolBtns = {btnAddVertex, btnAddEdge, btnGrab, btnRemove};
+        int[] toolIds = {1, 2, 3, 4};
         for (int i = 0; i < toolBtns.length; i++) {
             boolean active = (toolIds[i] == tool);
             toolBtns[i].setBackground(active ? TOOL_ACTIVE_BG : TOOL_INACTIVE_BG);
@@ -357,39 +377,100 @@ public class Canvas {
                         Vertex v = new Vertex("" + vertexList.size(), e.getX(), e.getY());
                         v.outerColor = defaultNodeOuter;
                         v.innerColor = defaultNodeInner;
-                        v.nodeSize   = defaultNodeSize;
+                        v.nodeSize = defaultNodeSize;
                         vertexList.add(v);
+
+                        // Action History for Vertex
+                        history.record(
+                                () -> {
+                                    System.out.println("Undo: removing vertex " + v);
+                                    vertexList.remove(v);
+                                    // also remove edges connected to v
+                                    for (Edge edge : new Vector<>(edgeList)) {
+                                        if (edge.vertex1 == v || edge.vertex2 == v) {
+                                            System.out.println("Undo: removing edge " + edge);
+                                            edgeList.remove(edge);
+                                        }
+                                    }
+                                    for (Vertex x : vertexList) {
+                                        x.connectedVertices.remove(v);
+                                    }
+                                    erase();
+                                    refresh();
+                                },
+                                () -> {
+                                    System.out.println("Redo: adding vertex " + v);
+                                    vertexList.add(v);
+                                    erase();
+                                    refresh();
+                                }
+                        );
+
                         v.draw(graphic);
                         // Select the new vertex in the style pane
                         selectedVertex = v;
-                        selectedEdge   = null;
+                        selectedEdge = null;
                         refreshSelectionPanel();
                         break;
                     }
                     case 4: {
+                        for (Vertex v : vertexList) {
+                            if (v.hasIntersection(e.getX(), e.getY())) {
+                                Vertex removedVertex = v;
+                                Vector<Edge> removedEdges = new Vector<>();
+                                Vector<Vertex> connected = new Vector<>(v.connectedVertices);
 
-                        /* for (Vertex v : vertexList) {
-                        if (v.hasIntersection(e.getX(), e.getY())) {
-                        {
-                        for (Edge d : edgeList) {
-                        if (d.vertex1 == v || d.vertex2 == v) {
-                        edgeList.remove(d);
+                                // Remove edges connected to this vertex
+                                for (Edge d : edgeList) {
+                                    if (d.vertex1 == v || d.vertex2 == v) {
+                                        System.out.println("Removing edge " + d + " connected to vertex "+ v);
+                                        removedEdges.add(d);
+                                        edgeList.remove(d);
+                                    }
+                                }
+
+                                // Remove connections from other vertices
+                                for (Vertex x : vertexList) {
+                                    if (x.connectedToVertex(v)) {
+                                        x.connectedVertices.remove(v);
+                                    }
+                                }
+                                // Finally, remove the vertex
+                                System.out.println("Removing vertex " + v);
+                                vertexList.remove(v);
+
+                                //Action history for Vertex removal
+                                history.record(
+                                        () -> {
+                                            System.out.println("Undo: restoring vertex " + removedVertex);
+                                            vertexList.add(removedVertex);
+                                            edgeList.addAll(removedEdges);
+                                            for (Vertex x : connected) {
+                                                removedVertex.addVertex(x);
+                                                x.addVertex(removedVertex);
+                                            }
+                                            erase();
+                                            refresh();
+                                        },
+                                        () -> {
+                                            System.out.println("Redo: removing vertex " + removedVertex);
+                                            vertexList.remove(removedVertex);
+                                            edgeList.removeAll(removedEdges);
+                                            for (Vertex x : connected) {
+                                                x.connectedVertices.remove(removedVertex);
+                                            }
+                                            erase();
+                                            refresh();
+                                        }
+                                );
+                                break; // stop after removing one vertex
+                            }
                         }
-                        }
-                        for (Vertex x : vertexList) {
-                        if (x.connectedToVertex(v)) {
-                        x.connectedVertices.remove(v);
-                        }
-                        }
-                        vertexList.remove(v);
-                        }
-                        }
-                        }*/ break;
+                        break;
                     }
                 }
-            //refresh();
+                refresh();
             }
-
 
         }
 
@@ -419,7 +500,7 @@ public class Canvas {
                     case 3: {
                         // Check edges first, vertex click overrides if both hit
                         selectedVertex = null;
-                        selectedEdge   = null;
+                        selectedEdge = null;
                         for (Edge d : edgeList) {
                             if (d.hasIntersection(e.getX(), e.getY())) {
                                 d.wasClicked = true;
@@ -434,7 +515,7 @@ public class Canvas {
                                 v.wasClicked = true;
                                 clickedVertexIndex = vertexList.indexOf(v);
                                 selectedVertex = v;      // vertex wins over edge
-                                selectedEdge   = null;
+                                selectedEdge = null;
                             } else {
                                 v.wasClicked = false;
                             }
@@ -462,22 +543,45 @@ public class Canvas {
                                 }
                                 /* Allows directed edge creation*/
                                 Edge edge = new Edge(parentV, v, isDirectedMode);
-                                edge.lineColor   = defaultEdgeColor;
+                                edge.lineColor = defaultEdgeColor;
                                 edge.strokeWidth = defaultEdgeStroke;
                                 //////////
                                 if (!isDirectedMode) {
                                     v.addVertex(parentV);
                                     parentV.addVertex(v);
-                                }   else {
+                                } else {
                                     // for directed graphs, only add connection in one direction
                                     parentV.addVertex(v);
                                 }
-                                    
+
                                 v.wasClicked = false;
                                 parentV.wasClicked = false;
                                 edgeList.add(edge);
+                                /* Action History for Edges */
+                                history.record(
+                                        () -> {
+                                            System.out.println("Undo: removing edge between " + parentV + " and " + v);
+                                            edgeList.remove(edge);
+                                            parentV.connectedVertices.remove(v);
+                                            v.connectedVertices.remove(parentV);
+                                            refresh();
+                                        },
+                                        () -> {
+                                            System.out.println("Redo: adding edge between " + parentV + " and " + v);
+                                            edgeList.add(edge);
+                                            if (!isDirectedMode) {
+                                                parentV.addVertex(v);
+                                                v.addVertex(parentV);
+                                            } else {
+                                                parentV.addVertex(v);
+                                            }
+                                            erase();
+                                            refresh();
+                                        }
+                                );
+
                                 // Select the new edge in the style pane
-                                selectedEdge   = edge;
+                                selectedEdge = edge;
                                 selectedVertex = null;
                                 refreshSelectionPanel();
                             } else {
@@ -490,7 +594,22 @@ public class Canvas {
                                 if (edge.hasIntersection(e.getX(), e.getY())) {
                                     String input = javax.swing.JOptionPane.showInputDialog("Enter weight for this edge:");
                                     try {
+                                        int oldWeight = edge.weight; // capture before we change
                                         int newWeight = Integer.parseInt(input);
+
+                                        // Action History for Weight Assignment
+                                        history.record(
+                                                () -> {
+                                                    edge.weight = oldWeight;
+                                                    refreshSelectionPanel();
+                                                    refresh();
+                                                },
+                                                () -> {
+                                                    edge.weight = newWeight;
+                                                    refreshSelectionPanel();
+                                                    refresh();
+                                                }
+                                        );
                                         edge.weight = newWeight;
                                         refresh();
                                     } catch (NumberFormatException ex) {
@@ -592,7 +711,7 @@ public class Canvas {
             } else if (command.equals("Save to File")) {
                 int returnValue = fileManager.jF.showSaveDialog(frame);
                 if (returnValue == JFileChooser.APPROVE_OPTION) {
-                    fileManager.saveFile(vertexList,fileManager.jF.getSelectedFile());
+                    fileManager.saveFile(vertexList, fileManager.jF.getSelectedFile());
                     System.out.println(fileManager.jF.getSelectedFile());
                 }
             } else if (command.equals("Graph")) {
@@ -620,7 +739,7 @@ public class Canvas {
 
                     //VD paths
                     gP.displayContainers(vertexList);
-                //gP.drawNWideDiameter();
+                    //gP.drawNWideDiameter();
                 }
                 erase();
             }
@@ -635,7 +754,6 @@ public class Canvas {
         double centerX = width / 2;
         double centerY = height / 2;
         int interval = 360 / vertexList.size();
-
 
         for (int i = 0; i < vertexList.size(); i++) {
             double degInRad = i * deg2rad * interval;
@@ -670,7 +788,11 @@ public class Canvas {
         erase();
     }
 
+    // Changes made here for undo/redo function
     public void refresh() {
+        // clear the canvas before redrawing
+        erase();
+
         for (Edge e : edgeList) {
             e.draw(graphic);
         }
@@ -699,13 +821,11 @@ public class Canvas {
     }
 
     public void erase() {
-        // Fill with backgroundColour so canvas color changes are visible
-        graphic.setColor(backgroundColour);
-        graphic.fillRect(0, 0, width, height);
-    }
-
-    public void erase(int x, int y, int x1, int y2) {
-        graphic.clearRect(x, y, x1, y2);
+        if (graphic != null) {
+            Dimension size = canvas.getSize();
+            graphic.setColor(backgroundColour);
+            graphic.fillRect(0, 0, size.width, size.height);
+        }
     }
 
     public void drawString(String text, int x, int y, float size) {
@@ -724,20 +844,19 @@ public class Canvas {
         public void paint(Graphics g) {
             switch (selectedWindow) {
                 case 0: {   //graph window
-                    graphic.drawString("Vertex Count=" + vertexList.size() +
-                            "  Edge Count=" + edgeList.size() +
-                            "  Selected Tool=" + selectedTool, 50, height / 2 + (height * 2) / 5);
-                            
+                    graphic.drawString("Vertex Count=" + vertexList.size()
+                            + "  Edge Count=" + edgeList.size()
+                            + "  Selected Tool=" + selectedTool, 50, height / 2 + (height * 2) / 5);
+
                     /* Shows if toggle for direction is on/off */
                     graphic.drawString(
-                        "Directed Mode=" + isDirectedMode,
-                        50, height / 2 + (height * 2) / 5 + 20
+                            "Directed Mode=" + isDirectedMode,
+                            50, height / 2 + (height * 2) / 5 + 20
                     );
 
                     /* SHows if toggle for weight is on/off */
                     graphic.drawString("Weighted Mode=" + isWeightedMode,
-                        50, height / 2 + (height * 2) / 5 + 40);
-
+                            50, height / 2 + (height * 2) / 5 + 40);
 
                     g.drawImage(canvasImage, 0, 0, null); //layer 1
                     g.setColor(Color.black);
@@ -761,9 +880,7 @@ public class Canvas {
         }
     }
 
-
     // ── Right-side Style Pane ──────────────────────────────────────────────────
-
     private JScrollPane buildRightPanel() {
 
         // ── Canvas section ────────────────────────────────────────────────────
@@ -771,7 +888,12 @@ public class Canvas {
         JButton bgBtn = makeColorBtn("Background", backgroundColour);
         bgBtn.addActionListener(ev -> {
             Color c = JColorChooser.showDialog(frame, "Canvas Background", backgroundColour);
-            if (c != null) { backgroundColour = c; styleColorBtn(bgBtn, c); erase(); refresh(); }
+            if (c != null) {
+                backgroundColour = c;
+                styleColorBtn(bgBtn, c);
+                erase();
+                refresh();
+            }
         });
         canvasSection.add(bgBtn);
         canvasSection.add(Box.createVerticalStrut(2));
@@ -803,17 +925,31 @@ public class Canvas {
 
         selVertexOuterBtn = makeColorBtn("Outer Color", defaultNodeOuter);
         selVertexOuterBtn.addActionListener(ev -> {
-            if (selectedVertex == null) return;
+            if (selectedVertex == null) {
+                return;
+            }
             Color c = JColorChooser.showDialog(frame, "Node Outer Color", selectedVertex.outerColor);
-            if (c != null) { selectedVertex.outerColor = c; styleColorBtn(selVertexOuterBtn, c); erase(); refresh(); }
+            if (c != null) {
+                selectedVertex.outerColor = c;
+                styleColorBtn(selVertexOuterBtn, c);
+                erase();
+                refresh();
+            }
         });
         vertexCard.add(selVertexOuterBtn);
 
         selVertexInnerBtn = makeColorBtn("Inner Fill", defaultNodeInner);
         selVertexInnerBtn.addActionListener(ev -> {
-            if (selectedVertex == null) return;
+            if (selectedVertex == null) {
+                return;
+            }
             Color c = JColorChooser.showDialog(frame, "Node Inner Fill", selectedVertex.innerColor);
-            if (c != null) { selectedVertex.innerColor = c; styleColorBtn(selVertexInnerBtn, c); erase(); refresh(); }
+            if (c != null) {
+                selectedVertex.innerColor = c;
+                styleColorBtn(selVertexInnerBtn, c);
+                erase();
+                refresh();
+            }
         });
         vertexCard.add(selVertexInnerBtn);
 
@@ -830,10 +966,13 @@ public class Canvas {
         selVertexSizeSlider.setAlignmentX(Component.LEFT_ALIGNMENT);
         selVertexSizeSlider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
         selVertexSizeSlider.addChangeListener(ev -> {
-            if (selectedVertex == null) return;
+            if (selectedVertex == null) {
+                return;
+            }
             selectedVertex.nodeSize = selVertexSizeSlider.getValue();
             selVertexSizeLabel.setText("Size: " + selectedVertex.nodeSize + " px");
-            erase(); refresh();
+            erase();
+            refresh();
         });
         vertexCard.add(sliderWrap(selVertexSizeSlider));
         vertexCard.add(Box.createVerticalStrut(2));
@@ -845,9 +984,16 @@ public class Canvas {
 
         selEdgeColorBtn = makeColorBtn("Color", defaultEdgeColor);
         selEdgeColorBtn.addActionListener(ev -> {
-            if (selectedEdge == null) return;
+            if (selectedEdge == null) {
+                return;
+            }
             Color c = JColorChooser.showDialog(frame, "Edge Color", selectedEdge.lineColor);
-            if (c != null) { selectedEdge.lineColor = c; styleColorBtn(selEdgeColorBtn, c); erase(); refresh(); }
+            if (c != null) {
+                selectedEdge.lineColor = c;
+                styleColorBtn(selEdgeColorBtn, c);
+                erase();
+                refresh();
+            }
         });
         edgeCard.add(selEdgeColorBtn);
 
@@ -864,10 +1010,13 @@ public class Canvas {
         selEdgeStrokeSlider.setAlignmentX(Component.LEFT_ALIGNMENT);
         selEdgeStrokeSlider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
         selEdgeStrokeSlider.addChangeListener(ev -> {
-            if (selectedEdge == null) return;
+            if (selectedEdge == null) {
+                return;
+            }
             selectedEdge.strokeWidth = selEdgeStrokeSlider.getValue();
             selEdgeStrokeLabel.setText("Stroke: " + (int) selectedEdge.strokeWidth + " px");
-            erase(); refresh();
+            erase();
+            refresh();
         });
         edgeCard.add(sliderWrap(selEdgeStrokeSlider));
         edgeCard.add(Box.createVerticalStrut(2));
@@ -889,14 +1038,20 @@ public class Canvas {
         JButton nodeOuterBtn = makeColorBtn("Outer Color", defaultNodeOuter);
         nodeOuterBtn.addActionListener(ev -> {
             Color c = JColorChooser.showDialog(frame, "Default Node Outer", defaultNodeOuter);
-            if (c != null) { defaultNodeOuter = c; styleColorBtn(nodeOuterBtn, c); }
+            if (c != null) {
+                defaultNodeOuter = c;
+                styleColorBtn(nodeOuterBtn, c);
+            }
         });
         defaultsSection.add(nodeOuterBtn);
 
         JButton nodeInnerBtn = makeColorBtn("Inner Fill", defaultNodeInner);
         nodeInnerBtn.addActionListener(ev -> {
             Color c = JColorChooser.showDialog(frame, "Default Node Inner", defaultNodeInner);
-            if (c != null) { defaultNodeInner = c; styleColorBtn(nodeInnerBtn, c); }
+            if (c != null) {
+                defaultNodeInner = c;
+                styleColorBtn(nodeInnerBtn, c);
+            }
         });
         defaultsSection.add(nodeInnerBtn);
 
@@ -931,7 +1086,10 @@ public class Canvas {
         JButton edgeColorBtn = makeColorBtn("Color", defaultEdgeColor);
         edgeColorBtn.addActionListener(ev -> {
             Color c = JColorChooser.showDialog(frame, "Default Edge Color", defaultEdgeColor);
-            if (c != null) { defaultEdgeColor = c; styleColorBtn(edgeColorBtn, c); }
+            if (c != null) {
+                defaultEdgeColor = c;
+                styleColorBtn(edgeColorBtn, c);
+            }
         });
         defaultsSection.add(edgeColorBtn);
 
@@ -969,9 +1127,13 @@ public class Canvas {
         return scroll;
     }
 
-    /** Refreshes the "Selected" card based on the current selection. */
+    /**
+     * Refreshes the "Selected" card based on the current selection.
+     */
     private void refreshSelectionPanel() {
-        if (selectionCards == null) return;
+        if (selectionCards == null) {
+            return;
+        }
         CardLayout cl = (CardLayout) selectionCards.getLayout();
         if (selectedVertex != null) {
             selectionTitle.setText("Node: " + selectedVertex.name);
@@ -982,7 +1144,7 @@ public class Canvas {
             cl.show(selectionCards, "vertex");
         } else if (selectedEdge != null) {
             String label = selectedEdge.vertex1.name + (selectedEdge.directed ? " \u2192 " : " \u2014 ")
-                           + selectedEdge.vertex2.name;
+                    + selectedEdge.vertex2.name;
             selectionTitle.setText("Edge: " + label);
             styleColorBtn(selEdgeColorBtn, selectedEdge.lineColor);
             selEdgeStrokeLabel.setText("Stroke: " + (int) selectedEdge.strokeWidth + " px");
@@ -994,7 +1156,10 @@ public class Canvas {
         }
     }
 
-    /** Wraps a JSlider in a BorderLayout panel to constrain its width in BoxLayout. */
+    /**
+     * Wraps a JSlider in a BorderLayout panel to constrain its width in
+     * BoxLayout.
+     */
     private JPanel sliderWrap(JSlider slider) {
         slider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
         JPanel wrap = new JPanel(new BorderLayout());
@@ -1004,7 +1169,9 @@ public class Canvas {
         return wrap;
     }
 
-    /** Creates a titled section panel with BoxLayout Y_AXIS. */
+    /**
+     * Creates a titled section panel with BoxLayout Y_AXIS.
+     */
     private JPanel createSection(String title) {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
@@ -1013,7 +1180,9 @@ public class Canvas {
         return p;
     }
 
-    /** Creates a color-swatch button (icon + label, system button background). */
+    /**
+     * Creates a color-swatch button (icon + label, system button background).
+     */
     private JButton makeColorBtn(String label, Color initial) {
         JButton btn = new JButton(label, colorSwatch(initial));
         btn.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1025,12 +1194,16 @@ public class Canvas {
         return btn;
     }
 
-    /** Updates the color-swatch icon on a button. */
+    /**
+     * Updates the color-swatch icon on a button.
+     */
     private void styleColorBtn(JButton btn, Color c) {
         btn.setIcon(colorSwatch(c));
     }
 
-    /** 16x16 filled square with a 1px gray border. */
+    /**
+     * 16x16 filled square with a 1px gray border.
+     */
     private Icon colorSwatch(Color c) {
         BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = img.createGraphics();
@@ -1042,21 +1215,25 @@ public class Canvas {
         return new ImageIcon(img);
     }
 
-    /** Pushes current node style defaults to every vertex then repaints. */
+    /**
+     * Pushes current node style defaults to every vertex then repaints.
+     */
     private void applyNodeStyleToAll() {
         for (Vertex v : vertexList) {
             v.outerColor = defaultNodeOuter;
             v.innerColor = defaultNodeInner;
-            v.nodeSize   = defaultNodeSize;
+            v.nodeSize = defaultNodeSize;
         }
         erase();
         refresh();
     }
 
-    /** Pushes current edge style defaults to every edge then repaints. */
+    /**
+     * Pushes current edge style defaults to every edge then repaints.
+     */
     private void applyEdgeStyleToAll() {
         for (Edge e : edgeList) {
-            e.lineColor   = defaultEdgeColor;
+            e.lineColor = defaultEdgeColor;
             e.strokeWidth = defaultEdgeStroke;
         }
         erase();

@@ -69,7 +69,34 @@ to support directed edges, weighted edges, and hover-based interaction.
   user-friendly compared to slope-based line detection.
 
 ------------------------------------------------------------
-End of README
 
 
 PS: Changes are done inside the "-Graph-Theory-v0.5" folder and not the _MACOSX.
+
+
+# Graphitti Project Updates
+
+## Recent Additions (February, 25, 2026)
+- **Undo/Redo Framework**
+  - Implemented `ActionHistory` integration for vertices and edges.
+  - Added lambdas to record state changes for vertex creation, removal, and edge creation.
+  - Debugging prints included to trace undo/redo actions in the terminal.
+
+- **Weight Assignment**
+  - Added support for assigning integer weights to edges.
+  - Undo/redo now correctly restores previous weights.
+
+- **Canvas Refresh Improvements**
+  - Introduced `erase()` method to clear the canvas before redraw.
+  - Updated `refresh()` to always clear and redraw from `vertexList` and `edgeList`.
+  - Prevents ghost vertices/edges from persisting after undo/redo.
+
+## Known Issues
+- Vertex undo/redo updates backend lists correctly but GUI redraw still needs refinement.
+- Edge undo/redo works intermittently; further testing required.
+- Debugging prints currently show object references (e.g., `graphtheory.Vertex@1234`); adding `toString()` methods in `Vertex` and `Edge` will improve readability.
+
+## Next Steps
+- Refine `Vertex` and `Edge` classes with `toString()` methods for clearer debug output.
+- Ensure full GUI synchronization between backend state and canvas rendering.
+- Continue testing edge cases for undo/redo (multiple vertices/edges, directed vs. undirected).
